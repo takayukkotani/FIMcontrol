@@ -1,0 +1,573 @@
+// WindowTest.cpp: アプリケーションのエントリ ポイントを定義します。
+//
+
+#include "stdafx.h"
+#include "WindowsTest_Bitran_combine.h"
+#include "Imaging.h"
+#include "BitranCCDlib.h"
+#include <stdio.h>
+#include <commctrl.h>
+
+#define MAX_LOADSTRING 100
+TCHAR szHello[1024];
+
+// グローバル変数:
+HINSTANCE hInst;                                // 現在のインターフェイス
+WCHAR szTitle[MAX_LOADSTRING];                  // タイトル バーのテキスト
+WCHAR szWindowClass[MAX_LOADSTRING];            // メイン ウィンドウ クラス名
+HWND hStatusBar;                        // The handle of the status bar
+
+HWND hwndGoto = NULL;                   // Window handle of dialog box 
+HBITMAP hBitmap = NULL;                 // Bitmap to draw imaging
+int ImageMode = -1;
+ULONGLONG uTickCount = MAXLONGLONG;
+ExposeInfo ExposeParam;
+bool CameraConnect();
+void CameraStatus();
+LRESULT CALLBACK	 Expouse(HWND, UINT, WPARAM, LPARAM);
+
+
+										// このコード モジュールに含まれる関数の宣言を転送します:
+ATOM                MyRegisterClass(HINSTANCE hInstance);
+BOOL                InitInstance(HINSTANCE, int);
+LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+
+void CameraStatus(int);
+int testID = 0;
+ULARGE_INTEGER ui_previous;
+
+
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
+	_In_opt_ HINSTANCE hPrevInstance,
+	_In_ LPWSTR    lpCmdLine,
+	_In_ int       nCmdShow)
+{
+	UNREFERENCED_PARAMETER(hPrevInstance);
+	UNREFERENCED_PARAMETER(lpCmdLine);
+
+	// TODO: ここにコードを挿入してください。
+	ui_previous.HighPart = 0;
+	ui_previous.LowPart = 0;
+
+	// グローバル文字列を初期化しています。
+	LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
+	LoadStringW(hInstance, IDC_WINDOWSTESTBITRANCOMBINE, szWindowClass, MAX_LOADSTRING);
+	MyRegisterClass(hInstance);
+
+	// アプリケーションの初期化を実行します:
+	if (!InitInstance(hInstance, nCmdShow))
+	{
+		return FALSE;
+	}
+
+	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_WINDOWSTESTBITRANCOMBINE));
+
+	MSG msg;
+	DWORD nEnd = ::GetTickCount();
+
+	// メイン メッセージ ループ:
+	while (GetMessage(&msg, nullptr, 0, 0))
+	{
+		if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+
+		//DWORD n = ::GetTickCount();         // 現在のシステムカウンタを取得して、
+		//if (n >= nEnd+5000) 		CameraStatus(); //break;              // ６０秒以上経過してたら抜ける
+
+		/*
+		// Display the temperature of the camera
+		ULONGLONG tick = GetTickCount();
+		if (tick > uTickCount)
+		{
+		uTickCount = tick + 3000;
+		printf("uTickCount=%d\n", uTickCount);
+		printf("uTickCount=%d\n", tick);
+
+		}
+		*/
+	}
+
+	return (int)msg.wParam;
+}
+
+
+
+//
+//  関数: MyRegisterClass()
+//
+//  目的: ウィンドウ クラスを登録します。
+//
+ATOM MyRegisterClass(HINSTANCE hInstance)
+{
+	WNDCLASSEXW wcex;
+
+	wcex.cbSize = sizeof(WNDCLASSEX);
+
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = WndProc;
+	wcex.cbClsExtra = 0;
+	wcex.cbWndExtra = 0;
+	wcex.hInstance = hInstance;
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_WINDOWSTESTBITRANCOMBINE));
+	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_WINDOWSTESTBITRANCOMBINE);
+	wcex.lpszClassName = szWindowClass;
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+
+	return RegisterClassExW(&wcex);
+}
+
+//
+//   関数: InitInstance(HINSTANCE, int)
+//
+//   目的: インスタンス ハンドルを保存して、メイン ウィンドウを作成します。
+//
+//   コメント:
+//
+//        この関数で、グローバル変数でインスタンス ハンドルを保存し、
+//        メイン プログラム ウィンドウを作成および表示します。
+//
+BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
+{
+	hInst = hInstance; // グローバル変数にインスタンス処理を格納します。
+
+	HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+		CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
+
+	if (!hWnd)
+	{
+		return FALSE;
+	}
+
+
+	ShowWindow(hWnd, nCmdShow);
+	UpdateWindow(hWnd);
+
+	return TRUE;
+}
+
+//
+//  関数: WndProc(HWND, UINT, WPARAM, LPARAM)
+//
+//  目的:    メイン ウィンドウのメッセージを処理します。
+//
+//  WM_COMMAND  - アプリケーション メニューの処理
+//  WM_PAINT    - メイン ウィンドウの描画
+//  WM_DESTROY  - 中止メッセージを表示して戻る
+//
+//
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	//	LPCWSTR hello = _T("Hello, World!");
+	LPCSTR hello = _T("Hello, World!");
+	int id;
+
+
+	switch (message)
+	{
+	case WM_COMMAND:
+	{
+		int wmId = LOWORD(wParam);
+		// 選択されたメニューの解析:
+		switch (wmId)
+		{
+		case IDM_ABOUT:
+			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+			break;
+		case IDM_EXIT:
+			DestroyWindow(hWnd);
+			break;
+		default:
+			return DefWindowProc(hWnd, message, wParam, lParam);
+		}
+	}
+	break;
+	case WM_PAINT:
+	{
+		PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(hWnd, &ps);
+		// TODO: HDC を使用する描画コードをここに追加してください...
+		//			TextOut(hdc, 20, 20, hello, wcslen(hello));
+
+		TextOut(hdc, 20, 20, hello, strlen(hello));
+
+
+		EndPaint(hWnd, &ps);
+	}
+	break;
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		break;
+
+
+	case WM_SHOWWINDOW:
+		// WM_SHOWWINDOW に反応しても可能だが、ウィンドウ表示後にサイズが変更されるため、あまりスマートではない。
+		//SetWindowPos(hWnd, HWND_TOP, 0, 0, 800, 600, SWP_NOMOVE);
+		break;
+
+	case WM_CREATE:
+	{
+
+		if (SetTimer(hWnd, ID_MYTIMER, 3000, NULL) == 0) {
+			MessageBox(hWnd,
+				(LPCSTR)"タイマー失敗！",
+				(LPCSTR)"失敗",
+				MB_OK);
+		}
+		else {
+			MessageBox(hWnd,
+				(LPCSTR)"タイマー成功！",
+				(LPCSTR)"成功",
+				MB_OK | MB_ICONEXCLAMATION);
+		}
+
+		// ウィンドウサイズを指定 (ウィンドウ位置は既定)
+		SetWindowPos(hWnd, HWND_TOP, 0, 0, 800, 600, SWP_NOMOVE);
+		// Make a temperature view area
+		hStatusBar = CreateStatusWindow(
+			WS_CHILD | WS_VISIBLE | CCS_BOTTOM | SBARS_SIZEGRIP,
+			_T(""), hWnd, ID_STATUS);
+
+		int section[] = { 200, 300, 400, 500, 600, 700,-1 };
+		TCHAR szWork[MAX_LOADSTRING];
+
+		SendMessage(hStatusBar, SB_SETPARTS, _countof(section), (LPARAM)section);
+
+		strcpy_s(szWork, MAX_LOADSTRING, "1");
+		//LoadString(hInst, IDS_VOLT, szWork, MAX_LOADSTRING);
+		SendMessage(hStatusBar, SB_SETTEXT, 1, (LPARAM)szWork);
+
+		strcpy_s(szWork, MAX_LOADSTRING, "TEST");
+		//LoadString(hInst, IDS_VOLT, szWork, MAX_LOADSTRING);
+		SendMessage(hStatusBar, SB_SETTEXT, 5, (LPARAM)szWork);
+	}
+
+	break;
+	case WM_TIMER:
+		KillTimer(hWnd, ID_MYTIMER);
+		testID += 1;
+		CameraStatus(testID);
+		SetTimer(hWnd, ID_MYTIMER, 3000, NULL);
+		/*
+		id = MessageBox(hWnd,
+		(LPCSTR)"タイマーを再発行しますか？",
+		(LPCSTR)"タイマー終了の確認",
+		MB_YESNO);
+		if (id == IDYES) {
+		SetTimer(hWnd, ID_MYTIMER, 3000, NULL);
+		}
+		*/
+		break;
+	default:
+		return DefWindowProc(hWnd, message, wParam, lParam);
+	}
+	return 0;
+}
+
+// バージョン情報ボックスのメッセージ ハンドラーです。
+INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	UNREFERENCED_PARAMETER(lParam);
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		return (INT_PTR)TRUE;
+
+	case WM_COMMAND:
+		if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+		{
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
+
+void CameraStatus(int testvar)
+{
+	TCHAR szWork[MAX_LOADSTRING], szFormat[MAX_LOADSTRING];
+	ULARGE_INTEGER ui;
+	int ccd = 1;
+	DWORD nEnd = ::GetTickCount();
+	//	sprintf_s(szWork, _countof(szWork), _T("%ims"), nEnd);
+	//	SendMessage(hStatusBar, SB_SETTEXT, 1, (LPARAM)szWork);
+
+	//@@@@@@@@@@@ get timestamp @@@@@@@@@@@@@@@@@@@@@
+	FILETIME   ftCreate, ftAccess, ftWrite;
+	SYSTEMTIME stCreate, stAccess, stWrite;
+
+	HANDLE file = CreateFile("C:/Users/kotanitk/source/repos/WindowTest/Debug/test.dat", GENERIC_READ,
+		0, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	if (file == INVALID_HANDLE_VALUE) {
+		printf("フォルダが開けません。\n");
+		return;
+	}
+	GetFileTime(file, &ftCreate, &ftAccess, &ftWrite);
+	FileTimeToSystemTime(&ftCreate, &stCreate);
+	FileTimeToSystemTime(&ftAccess, &stAccess);
+	FileTimeToSystemTime(&ftWrite, &stWrite);
+	CloseHandle(file);
+
+
+	ui.HighPart = ftWrite.dwHighDateTime;
+	ui.LowPart = ftWrite.dwLowDateTime;
+	if (ui.QuadPart > ui_previous.QuadPart) {
+		strcpy_s(szWork, MAX_LOADSTRING, "YES!!");
+		SendMessage(hStatusBar, SB_SETTEXT, 2, (LPARAM)szWork);
+		ui_previous = ui;
+	}
+	else {
+		strcpy_s(szWork, MAX_LOADSTRING, "NO!!");
+		SendMessage(hStatusBar, SB_SETTEXT, 2, (LPARAM)szWork);
+
+	}
+	//	printf("作成時刻:1601年1月から%I64d秒後です。\n", ui.QuadPart / 10000000);
+	/*
+	printf("%d.%02d.%02d %2d:%02d:%02d\n", stCreate.wYear,
+	stCreate.wMonth, stCreate.wDay, stCreate.wHour, stCreate.wMinute, stCreate.wSecond);
+	printf("%d.%02d.%02d %2d:%02d:%02d\n", stAccess.wYear,
+	stAccess.wMonth, stAccess.wDay, stAccess.wHour, stAccess.wMinute, stAccess.wSecond);
+	printf("%d.%02d.%02d %2d:%02d:%02d\n", stWrite.wYear,
+	stWrite.wMonth, stWrite.wDay, stWrite.wHour, stWrite.wMinute, stWrite.wSecond);
+	*/
+	//	sprintf_s(szWork, _countof(szWork), _T("%i sec"), Write.wSecond);
+	//	sprintf_s(szWork, _countof(szWork), _T("%i sec"), ui.QuadPart/10000000);
+	sprintf_s(szWork, _countof(szWork), _T("%i sec"), testvar);
+
+	//sprintf_s(szWork, _countof(szWork), _T("%ims"), nEnd);
+	SendMessage(hStatusBar, SB_SETTEXT, 1, (LPARAM)szWork);
+}
+
+
+
+BOOL InitBitranCCDlib(LPTSTR lpCmdLine)
+{
+	char name[100];
+	strcpy_s(name, sizeof(name), "BK50USBlib.dll");
+	hBitranCCDlibDLL = LoadLibrary(name);
+	if (hBitranCCDlibDLL == NULL)
+	{
+		strcat_s(name, sizeof(name), " is not found");
+		MessageBox(NULL, name, NULL, MB_OK | MB_ICONSTOP);
+		return FALSE;
+	}
+
+	BitranCCDlibCreate = (LPFNDLLFUNC1)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibCreate");
+	BitranCCDlibDestroy = (LPFNDLLFUNC2)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibDestroy");
+	BitranCCDlibCameraInfo = (LPFNDLLFUNC3)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibCameraInfo");
+	BitranCCDlibGetVoltage = (LPFNDLLFUNC4)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibGetVoltage");
+	BitranCCDlibSetCoolerPower = (LPFNDLLFUNC5)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibSetCoolerPower");
+	BitranCCDlibGetCoolerPower = (LPFNDLLFUNC4)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibGetCoolerPower");
+	BitranCCDlibSetTemperatue = (LPFNDLLFUNC6)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibSetTemperatue");
+	BitranCCDlibGetTemperatue = (LPFNDLLFUNC7)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibGetTemperatue");
+	BitranCCDlibEnvironment = (LPFNDLLFUNC8)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibEnvironment");
+	BitranCCDlibStartExposure = (LPFNDLLFUNC9)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibStartExposure");
+	BitranCCDlibContinueExposure = (LPFNDLLFUNC4)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibContinueExposure");
+	BitranCCDlibCameraState = (LPFNDLLFUNC7)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibCameraState");
+	BitranCCDlibAbortExposure = (LPFNDLLFUNC7)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibAbortExposure");
+	BitranCCDlibFinishExposure = (LPFNDLLFUNC7)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibFinishExposure");
+	BitranCCDlibTransferImage = (LPFNDLLFUNC11)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibTransferImage");
+	BitranCCDlibImageInterpolation = (LPFNDLLFUNC12)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibImageInterpolation");
+	BitranCCDlibImageConvert = (LPFNDLLFUNC13)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibImageConvert");
+	BitranCCDlibImageSave = (LPFNDLLFUNC14)
+		GetProcAddress(hBitranCCDlibDLL, "BitranCCDlibImageSave");
+
+	return TRUE;
+}
+
+
+VOID ExitBitranCCDlib()
+{
+	if (pImageData)
+		delete[] pImageData;
+
+	BitranCCDlibDestroy();
+	FreeLibrary(hBitranCCDlibDLL);
+}
+
+// The camera communicates
+bool CameraConnect()
+{
+	int width, height;
+	int result = BitranCCDlibCreate(NULL, &width, &height);
+	if (result != 1)
+		return false;
+
+	char info[100];
+	int lng = BitranCCDlibCameraInfo(1, info, sizeof(info));
+	if (lng == 0)
+		return false;
+
+	strcpy_s(szHello, _countof(szHello), info);
+	strcat_s(szHello, _countof(szHello), "\r\n");
+
+	char* camera = strstr(info, "BK-5");
+	if (camera == NULL)
+		return false;
+
+	info[strcspn(info, " \r\n")] = 0;
+	SendMessage(hStatusBar, SB_SETTEXT, SBT_POPOUT, (LPARAM)info);
+
+	BitranCCDlibCameraInfo(0, info, sizeof(info));
+	strcat_s(szHello, _countof(szHello), info);
+	strcat_s(szHello, _countof(szHello), "\r\n");
+
+	pImageData = new WORD[width * height];
+	uTickCount = 0;
+	InvalidateRect(NULL, NULL, TRUE);
+	return true;
+}
+
+void CameraStatus()
+{
+	TCHAR szWork[MAX_LOADSTRING], szFormat[MAX_LOADSTRING];
+
+	int ccd = BitranCCDlibGetTemperatue(0);
+	LoadString(hInst, IDS_TEMP, szFormat, MAX_LOADSTRING);
+	sprintf_s(szWork, MAX_LOADSTRING, szFormat, (double)ccd / 10.0);
+	SendMessage(hStatusBar, SB_SETTEXT, 1, (LPARAM)szWork);
+
+	int body = BitranCCDlibGetTemperatue(1);
+	LoadString(hInst, IDS_TEMP, szFormat, MAX_LOADSTRING);
+	sprintf_s(szWork, MAX_LOADSTRING, szFormat, (double)body / 10.0);
+	SendMessage(hStatusBar, SB_SETTEXT, 2, (LPARAM)szWork);
+
+	int power = BitranCCDlibGetCoolerPower();
+	sprintf_s(szWork, MAX_LOADSTRING, _T("%i"), power);
+	SendMessage(hStatusBar, SB_SETTEXT, 3, (LPARAM)szWork);
+
+	int volt = BitranCCDlibGetVoltage();
+	sprintf_s(szWork, MAX_LOADSTRING, _T("%i.%iV"), volt / 10, volt % 10);
+	SendMessage(hStatusBar, SB_SETTEXT, 4, (LPARAM)szWork);
+
+	SendMessage(hStatusBar, SB_SETBKCOLOR, 0,
+		((ccd == ILLEGAL_VALUE) || (body == ILLEGAL_VALUE) ||
+		(power == ILLEGAL_VALUE) || (volt == ILLEGAL_VALUE) || (volt < 100)) ?
+			(LPARAM)RGB(255, 0, 0) : CLR_DEFAULT);
+}
+
+// A dialogue to expose
+LRESULT CALLBACK Expouse(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:
+	{
+		SendDlgItemMessage(hDlg, IDC_SPIN1, UDM_SETRANGE32, 100, 64800000);
+		SendDlgItemMessage(hDlg, IDC_SPIN1, UDM_SETPOS, 0, 100);
+
+		LPCTSTR strItem[] = { TEXT("1x1"),
+			TEXT("2x2"),
+			TEXT("3x3"),
+			TEXT("4x4"),
+			TEXT("8x8"),
+			TEXT("16x16") };
+		for (int i = 0; i < _countof(strItem); i++)
+			SendDlgItemMessage(hDlg, IDC_COMBO1, CB_ADDSTRING, 0, (LPARAM)strItem[i]);
+		SendDlgItemMessage(hDlg, IDC_COMBO1, CB_SETCURSEL, 0, 0);
+
+		CheckRadioButton(hDlg, IDC_RADIO1, IDC_RADIO3, IDC_RADIO1);
+
+		TCHAR str[10];
+		for (int i = 1; i <= 10; i++)
+		{
+			_itot_s(i, str, _countof(str), 10);
+			SendDlgItemMessage(hDlg, IDC_LIST1, LB_ADDSTRING, 0, (LPARAM)str);
+		}
+		SendDlgItemMessage(hDlg, IDC_LIST1, LB_SETCURSEL, 2, 0);
+
+		ShowWindow(hDlg, SW_SHOW);
+		return TRUE;
+	}
+
+	case WM_COMMAND:
+		switch (LOWORD(wParam))
+		{
+		case IDOK:
+		{
+			ShowWindow(GetDlgItem(hDlg, IDOK), SW_HIDE);
+			ShowWindow(GetDlgItem(hDlg, IDC_STOP), SW_SHOW);
+			EnableWindow(GetDlgItem(hDlg, IDC_STOP), TRUE);
+
+			// Exposure time (ms)
+			ExposeParam.time = GetDlgItemInt(hDlg, IDC_EDIT1, NULL, FALSE);
+
+			// Horizontal & Vertical binnig
+			TCHAR str[10];
+			GetWindowText(GetDlgItem(hDlg, IDC_COMBO1), str, _countof(str));
+			LPTSTR ptr;
+			ExposeParam.binX = _tcstol(str, &ptr, 10);
+			ExposeParam.binY = _tcstol(&ptr[1], &ptr, 10);
+
+			// Center area(full=0,256=1,512=2)
+			ExposeParam.center = 0;
+			for (UINT id = IDC_CHECK1; id <= IDC_CHECK2; id++)
+				if (IsDlgButtonChecked(hDlg, id) == BST_CHECKED)
+					ExposeParam.center = id - IDC_CHECK1 + 1;
+
+			// A/D mode(1.3MHz=0,250KHz=1)
+			ExposeParam.mode = IsDlgButtonChecked(hDlg, IDC_CHECK3);
+
+			// Trigger mode(not used=0,sync=1,exposure=2)
+			ExposeParam.trigger = IsDlgButtonChecked(hDlg, IDC_RADIO1) ? 0 :
+				IsDlgButtonChecked(hDlg, IDC_RADIO2) ? 2 : 3;
+
+			// Continue or One shot
+			ExposeParam.repeat = IsDlgButtonChecked(hDlg, IDC_CHECK4) == BST_CHECKED;
+
+			// Light frame or Dark frame
+			ExposeParam.dark = IsDlgButtonChecked(hDlg, IDC_CHECK6);
+
+			// Fan mode(ON=0,Delay time(ms)>0)
+			ExposeParam.fan = (IsDlgButtonChecked(hDlg, IDC_CHECK5) == BST_UNCHECKED) ? 0 :
+				((int)SendDlgItemMessage(hDlg, IDC_LIST1, LB_GETCURSEL, 0, 0) + 1) * 1000;
+
+			ExposeParam.abort = false;
+			uTickCount = MAXLONGLONG;
+			PostMessage(GetParent(hDlg), WM_COMMAND, IDD_EXPOSE, 0);
+			break;
+		}
+
+		case IDC_STOP:
+			ExposeParam.abort = true;
+			EnableWindow(GetDlgItem(hDlg, IDC_STOP), FALSE);
+			BitranCCDlibAbortExposure(-5);
+			break;
+
+		case IDCANCEL:
+			DestroyWindow(hDlg);
+			return TRUE;
+
+		default:
+			int wmId = LOWORD(wParam);
+			if ((wmId >= IDC_CHECK1) && (wmId <= IDC_CHECK2))
+				if (IsDlgButtonChecked(hDlg, wmId) == BST_CHECKED)
+					CheckRadioButton(hDlg, IDC_CHECK1, IDC_CHECK2, LOWORD(wParam));
+		}
+	}
+	return FALSE;
+}
+
