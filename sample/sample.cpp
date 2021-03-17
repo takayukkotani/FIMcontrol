@@ -2309,7 +2309,7 @@ int calc_CenterOfGravity(LPWORD pImageData, const char *fitsfilename, char *Targ
 
 	if (fits_close_file(fptr, &status))                // close the file 
 		printerror(status);
-	
+	 
 	//@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 //	printf("Dark file Fits write OK\n");
 
