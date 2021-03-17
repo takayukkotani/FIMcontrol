@@ -43,6 +43,7 @@ float DeltaY=0.0;
 float V0 = 5.0;
 float V1 = 5.0;
 float CCDtemp = 0.0;
+float CCD_target_temp = 0.0; //2021/03/16 Takayuki Kotani
 float Bodytemp = 0.0;
 int cenX0 = 0;
 int cenY0 = 0;
@@ -59,6 +60,8 @@ unsigned short MaxX = 0, MaxY = 0, MaxXs = 0, MaxYs = 0;
 unsigned short TimerSec = 500; //timer span in msec
 char fname_log[] = "C:/cygwin64/home/bitran/data/FIM_operation_log.dat";
 char fname_badpix[] = "C:/cygwin64/home/bitran/data/badpix_map.dat";
+char fname_ccdtemp[] = "C:/cygwin64/home/bitran/data/ccdtemp.dat";
+
 char dirdataname[] = "D:/FIM_data/";  //main FIM image directory
 //char fitsfilename_s_dark[200];
 char fitsfilename_s_dark[200];
@@ -92,14 +95,14 @@ int status_command = 0;
 int CommandCounter = 1;
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
-                     _In_opt_ HINSTANCE hPrevInstance,
-                     _In_ LPTSTR    lpCmdLine,
-                     _In_ int       nCmdShow)
+	_In_opt_ HINSTANCE hPrevInstance,
+	_In_ LPTSTR    lpCmdLine,
+	_In_ int       nCmdShow)
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
- 	// TODO: Place code here.
+	// TODO: Place code here.
 	MSG msg;
 	HACCEL hAccelTable;
 	char buff[128] = "", buff2[128] = "";
@@ -109,13 +112,13 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	ui_previous.HighPart = 0;
 	ui_previous.LowPart = 0;
 
-    LoadString(hInstance, IDS_HELLO, szHello, MAX_LOADSTRING);
+	LoadString(hInstance, IDS_HELLO, szHello, MAX_LOADSTRING);
 
 	// Initialize global strings
 	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
 	LoadString(hInstance, IDC_SAMPLE, szWindowClass, MAX_LOADSTRING);
 	MyRegisterClass(hInstance);
-	
+
 	// Read badpixl data ////////////////////////////////////////////////////////////////
 	// read file to get CCD read parameter
 	if (fopen_s(&fp, fname_badpix, "r") != 0) { // file open
@@ -123,12 +126,25 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		printf("%s file not open!\n", fname_badpix);
 		return -1;
 	}
-	for(i=0;i<Nbadpix;i++){
-	fscanf_s(fp, "%d %d\n", &(indx0[i]), &(indy0[i]));
-	indx0[i] -= 1;
-	indy0[i] -= 1;
+	for (i = 0; i < Nbadpix; i++) {
+		fscanf_s(fp, "%d %d\n", &(indx0[i]), &(indy0[i]));
+		indx0[i] -= 1;
+		indy0[i] -= 1;
 	}
 	fclose(fp); // 
+	//////////////////////////////////////////////////////////////////////////////////////
+
+	// Read CCD temperature data from file  2021/03/16 Takayuki Kotani ////////////////////////////////////////////////////////////////
+	if (fopen_s(&fp, fname_ccdtemp, "r") != 0) { // file open
+												//		if (fp == NULL) {
+		printf("%s file not open!\n", fname_ccdtemp);
+		return -1;
+	}
+	fscanf_s(fp, "%f\n", &CCD_target_temp); // CCDtemp is a temperature from a file
+
+	fclose(fp); // 
+	if (CCD_target_temp > 0.0 || CCD_target_temp < -25.0) CCD_target_temp = -15.0;
+
 	//////////////////////////////////////////////////////////////////////////////////////
 
 	// Perform application initialization:
@@ -171,7 +187,9 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		SendMessage(hStatusBar, SB_SETTEXT, 5, (LPARAM)szWork);
 
 		// start cooling 
-		BitranCCDlibSetTemperatue(-150); // in th unit of 100 milli deg (for example, -100 correspnds to -10 deg
+//		BitranCCDlibSetTemperatue(-150); // in th unit of 100 milli deg (for example, -100 correspnds to -10 deg, commen out 2021/03/16 Takayuki Kotani
+		BitranCCDlibSetTemperatue(int(CCD_target_temp*10)); // in th unit of 100 milli deg (for example, -100 correspnds to -10 deg, 2021/03/16 Takayuki Kotani
+
 		printf("Cooling has started\n");
 
 		// write command data to log file ///////////////////////////////////////
@@ -397,7 +415,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             BitranCCDlibSetCoolerPower(130);
             break;
         case ID_COOLER:
-            BitranCCDlibSetTemperatue(-150); // in th unit of 100 milli deg (for example, -100 correspnds to -10 deg
+//            BitranCCDlibSetTemperatue(-150); // in th unit of 100 milli deg (for example, -100 correspnds to -10 deg, comment out, 2021/03/16 Takayuki Kotani
+			BitranCCDlibSetTemperatue(int(CCD_target_temp*10)); // in th unit of 100 milli deg (for example, -100 correspnds to -10 deg, 2021/03/16 Takayuki Kotani
+
 			printf("Cooling\n");
 
             break;
